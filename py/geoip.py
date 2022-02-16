@@ -30,7 +30,7 @@ class GeoIpProvider:
                 self.domains[domain] = iso
                 n += 1
             else:
-                warn('invalid geoip line: %s' % `line`)
+                warn('invalid geoip line: %s' % repr(line))
         warn('finished reading %d geoip entries' % n)
 
     def get(self, url):
@@ -50,7 +50,7 @@ class GeoIpProvider:
 def geocode_url(url):
     h = url2host(url)
     try:
-        s = urllib.urlopen('http://freegeoip.net/csv/' + h).read()
+        s = urllib.request.urlopen('http://freegeoip.net/csv/' + h).read()
         tokens = s.split(',')
         if len(tokens) > 2 and len(tokens[1]) == 2:
             cc = tokens[1].lower()

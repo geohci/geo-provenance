@@ -1,7 +1,7 @@
 import codecs
 import sys
 import tldextract
-import urllib2
+import urllib.request
 
 
 DATA_DIR = '../data'
@@ -62,7 +62,7 @@ def gp_open(path, mode='r', encoding='utf-8'):
 def url2host(url):
     if not url.startswith('http:') and not url.startswith('https:'):
         url = 'http://' + url
-    return urllib2.urlparse.urlparse(url).netloc
+    return urllib.request.urlparse(url).netloc
 
 
 def test_url2host():

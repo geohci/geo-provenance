@@ -39,7 +39,7 @@ class WikidataProvider:
                 self.domains[domain] = iso
                 n += 1
             else:
-                warn('invalid wikidata line: %s' % `line`)
+                warn('invalid wikidata line: %s' % repr(line))
         warn('finished reading %d wikidata entries' % n)
 
         f = open(get_data_path('wikidata.json'))
@@ -98,7 +98,7 @@ def coord_to_country(wikidata_coord):
     lng = float(parts[1])
 
     url = 'http://nominatim.openstreetmap.org/reverse?format=json&lat=%.4f&lon=%.4f' % (lat, lng)
-    f = urllib2.urlopen(url)
+    f = urllib.request.urlopen(url)
     js = json.load(f)
     if js and js['address'] and js['address']['country_code']:
         return js['address']['country_code']
@@ -108,7 +108,7 @@ def coord_to_country(wikidata_coord):
 def rebuild():
     all_urls = 'http://wdq.wmflabs.org/api?props=856,159,625&q=CLAIM[856]%20AND%20(CLAIM[159]%20OR%20CLAIM[625])'
 
-    all_data = json.load(urllib2.urlopen(all_urls))
+    all_data = json.load(urllib.request.urlopen(all_urls))
 
     item_urls = {}
     for (item, type, url) in all_data['props']['856']:
@@ -127,7 +127,7 @@ def rebuild():
         if domain in domain_coords: continue
         place_url = 'http://wdq.wmflabs.org/api?props=625&q=items[%s]' % placeId
         try:
-            place_result = json.load(urllib2.urlopen(place_url))
+            place_result = json.load(urllib.request.urlopen(place_url))
             if 'props' in place_result and place_result['props'].get('625'):
                 coord = place_result['props']['625'][0][2]
                 domain_coords[domain] = coord

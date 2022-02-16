@@ -4,8 +4,7 @@ import os
 import re
 import shutil
 import tempfile
-import urlparse
-import urllib2
+import urllib.request
 
 from bs4 import BeautifulSoup
 
@@ -58,12 +57,12 @@ TMP_DIR = ".tmp"
 
 
 def download_url(url):
-    urlinfo = urlparse.urlparse(url)
+    urlinfo = urllib.request.urlparse(url)
 
-    request = urllib2.Request(url)
-    handler1 = urllib2.HTTPRedirectHandler()
-    handler2 = urllib2.HTTPCookieProcessor()
-    opener3 = urllib2.build_opener(handler1, handler2)
+    request = urllib.request.Request(url)
+    handler1 = urllib.request.HTTPRedirectHandler()
+    handler2 = urllib.request.HTTPCookieProcessor()
+    opener3 = urllib.request.build_opener(handler1, handler2)
     opener3.addheaders = [
         ('User-agent' , 'Mozilla/5.0'),
         ('Host' , urlinfo.netloc)

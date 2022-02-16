@@ -64,7 +64,7 @@ class WhoisProvider:
                     self.cache[domain] = dist
                 nlines += 1
             else:
-                warn('invalid whois line: %s' % `line`)
+                warn('invalid whois line: %s' % repr(line))
         warn('finished reading %d whois entries' % nlines)
         f.close()
 
@@ -228,7 +228,7 @@ def build_regexes(aliases):
     n = 0
     regexes = {}
     for (cc, aliases) in aliases.items():
-        if cc == 'atrysh': print aliases
+        if cc == 'atrysh': print(aliases)
         orred = '|'.join(re.escape(a) for a in aliases)
         pattern = "(^|\\b)(" + orred + ')($|\\b)'
         regexes[cc] = re.compile(pattern)

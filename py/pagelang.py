@@ -49,7 +49,7 @@ class PagelangProvider:
                 self.pagelangs[url] = cc
                 nlines += 1
             else:
-                warn('invalid pagelang line: %s' % `line`)
+                warn('invalid pagelang line: %s' % repr(line))
         warn('finished reading %d pagelang entries' % nlines)
 
     def get(self, url):
