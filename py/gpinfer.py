@@ -5,9 +5,7 @@ import math
 
 from gputils import *
 from country import read_countries
-# from geoip import GeoIPFeature
 from milgov import MilGovFeature
-from pagelang import PagelangsFeature
 from whois import FreetextWhoisFeature, ParsedWhoisFeature
 from wikidata import WikidataFeature
 from tld import TldFeature
@@ -45,16 +43,14 @@ class LogisticInferrer:
         if not features:
             self.features = [
                 PriorFeature(),
-                # GeoIPFeature(),
                 ParsedWhoisFeature(),
                 FreetextWhoisFeature(),
                 MilGovFeature(),
                 WikidataFeature(),
-                PagelangsFeature(),
                 TldFeature()
             ]
             self.intercept = -7.06
-            self.coefficients = [2.38, 5.39, 2.06, 2.87, 2.03, 5.37, 7.03]
+            self.coefficients = [2.38, 5.39, 2.06, 2.87, 2.03, 7.03]
         else:
             if not intercept or not coefficients:
                 raise GPException("if features are specified, intercept and coefficients must be too.")

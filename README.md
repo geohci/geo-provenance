@@ -1,29 +1,22 @@
 # Geo-provenance
 
-This project contains tools for inferring the *geoprovenance* of webresources.
-A web page's geoprovenance is the home country for the original publisher of the information contained in the web page.
+This is an update to the original [geo-provenance](https://github.com/shilad/geo-provenance) repository.
+It makes some functionality fixes -- upgrade to Python3; update Wikidata endpoints -- but it also has a slightly different purpose. 
+The original code was aimed at broad-scale distributional analyses -- e.g., how many references in English Wikipedia are from India?
+This fork is aimed at individual accuracy and simplicity, so I have favored higher precision over recall and dropped some features that are more expensive to generate.
 
-The geoprovenance of:
-* A web resource created by a company or organization is the country where its headquarters are located.
-* A web resource created by an individual author is that individual's home country.
-* A book is the country associated with the publisher of the book.
-* More details are provided in our [2015 CHI paper](http://www-users.cs.umn.edu/~bhecht/publications/localnessgeography_CHI2015.pdf). 
-
-If you use this software in an academic publication, please cite it as follows: Sen, S., Ford, H., Musicant, D., Graham, M., Keyes, O., and Hecht, B. 2015. "[Barriers to the Localness of Volunteered Geographic Information](http://www-users.cs.umn.edu/~bhecht/publications/localnessgeography_CHI2015.pdf)." *Proceedings of CHI 2015.* New York: ACM Press.
-
-There are a few deviations from the published algorithm (TODO fix these):
-* Does not follow links to `archive.org` and other repositories.
-* Does not handle binary files, like PDFs, Open Office docs, and Microsoft docs.
-* Not integrated with amazon web services to scrape en-mass.
+Summary:
+* I dropped the page language feature. This had high coverage (96%) but low accuracy (61%) and introduces a lot of overhead for the crawling of webpages.
+* I retained the WHOIS feature even though it's also high cost because of the existing cache and high accuracy (80%)
+* I retained the Wikidata feature because of the high accuracy (93%) and simplicity of making a single SPARQL query
+* I retained the URL features (milgov and tld) because of their high accuracy (>90%) and simplicity
 
 ### Installing necessary Python modules:
 
 ```bash
+pip install shapely
+pip install SPARQLWrapper
 pip install tldextract
-pip install chardet
-pip install geopy
-pip install beautifulsoup4
-pip install langid
 ```
 
 If you want to run the evaluator, which rebuilds the logistic regression (not necessary to use the pre-built model), you'll also need to install `sklearn`.
@@ -87,11 +80,8 @@ The logistic regression classification model used in this package is trained usi
 
 ### Questions or suggestions?
 
-Open an issue on this repo, send a pull request, or email Shilad at ssen@macalester.edu.
+Open an issue on this repo, send a pull request, or email Isaac at isaac@wikimedia.org.
 
 ### Credits
 
-* Shilad Sen developed the geoprovenance inference algorithm and software.
-* Dave Musicant developed the original Ruby code to extract country names from whois queries.
-* Heather Ford led development of GeoProv198, with major assistance from Brent Hecht and minor assistance from Dave Musicant, Shilad Sen, and Mark Graham.
-* Matthew Zook provided early guidance on the design of our algorithm.
+* See: https://github.com/shilad/geo-provenance

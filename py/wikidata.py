@@ -8,9 +8,10 @@ Author: Shilad Sen
 
 """
 import json
-
 import os
 import traceback
+
+from shapely.geometry import shape, Point
 
 from gputils import *
 
@@ -67,6 +68,15 @@ class WikidataProvider:
         f.write(line + u'\n')
         f.close()
 
+    def load_region_data(self, region_geoms_geojson):
+        with open(region_geoms_geojson, 'r') as fin:
+            regions = json.load(fin)['features']
+        region_shapes = {}
+        for c in regions:
+            country_code = c['properties']['ISO_A2']
+            region_shapes[country_code] = shape(c['geometry'])
+        return region_shapes
+
 class WikidataFeature:
     def __init__(self, provider=None):
         if not provider: provider = WikidataProvider()
@@ -106,40 +116,52 @@ def coord_to_country(wikidata_coord):
         return None
 
 def rebuild():
-    all_urls = 'http://wdq.wmflabs.org/api?props=856,159,625&q=CLAIM[856]%20AND%20(CLAIM[159]%20OR%20CLAIM[625])'
+    """Rebuild cache of URLs -> coordinates from Wikidata.
 
-    all_data = json.load(urllib.request.urlopen(all_urls))
+    """
+    from SPARQLWrapper import SPARQLWrapper, JSON
 
-    item_urls = {}
-    for (item, type, url) in all_data['props']['856']:
-        item_urls[item] = url
+    website_query = """
+    # All items with an official website and either coordinates or a headquarters location
+    SELECT
+      ?websiteurl ?coords
+    WHERE
+    {
+      # items with a website
+      ?item wdt:P856 ?websiteurl .
+      # and coordinate location or headquarters or country
+      OPTIONAL { ?item wdt:P159 ?coords . }
+      OPTIONAL { ?item wdt:P625 ?coords . }
+      FILTER(BOUND(?coords)).
+    }
+    """
+    # 734,702 results as of 16 February 2022
 
-    domain_coords = {}
-    for (item, type, coord) in all_data['props']['625']:
-        url = item_urls[item]
-        domain = url2registereddomain(url)
-        domain_coords[domain] = coord
+    sparql = SPARQLWrapper("https://query.wikidata.org/sparql",
+                           agent='https://github.com/shilad/geo-provenance')
+    sparql.setQuery(website_query)
+    sparql.setReturnFormat(JSON)
+    results = sparql.queryAndConvert()
+    all_data = results['results']['bindings']
 
-    for (i, (item, type, placeId)) in enumerate(all_data['props']['159']):
-        if i % 10 == 0:
-            warn('doing %d' % i)
-        domain = url2registereddomain(item_urls[item])
-        if domain in domain_coords: continue
-        place_url = 'http://wdq.wmflabs.org/api?props=625&q=items[%s]' % placeId
+    wikidata_coords = {}
+    for website in all_data:
         try:
-            place_result = json.load(urllib.request.urlopen(place_url))
-            if 'props' in place_result and place_result['props'].get('625'):
-                coord = place_result['props']['625'][0][2]
-                domain_coords[domain] = coord
-        except:
-            warn('resolving %s failed:' % domain)
+            url = website['websiteurl']['value']
+            coords = website['coords']['value']
+            lon_lat = coords.replace("Point", "")[1:-1].split()  # ex: Point(14.4690742 50.0674744)
+            domain = url2registereddomain(url)
+            try:
+                # ensure valid numeric and convert to <lat>|<lon> representation
+                wikidata_coords[domain] = '|'.join([str(float(lon_lat[1])), str(float(lon_lat[0]))])
+            except Exception:
+                warn('invalid coordinates: %s' % coords)
+        except Exception:
+            warn('invalid sparql result: %s' % str(website))
             traceback.print_exc()
 
-    f = lambda u: u.encode('ascii', 'ignore')
-    result = dict((f(k), f(v)) for (k, v) in domain_coords.items())
-    f = open(DATA_DIR + '/wikidata.json', 'w')
-    json.dump(result, f)
-    f.close()
+    with open(DATA_DIR + '/wikidata.json', 'w') as fout:
+        json.dump(wikidata_coords, fout)
 
 if __name__ == '__main__':
     rebuild()
