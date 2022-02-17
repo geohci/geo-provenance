@@ -1,19 +1,23 @@
 """
 Attempts to look up the locations associated with URLs using information from Wikidata.
 
-Uses a precomputed mapping from domain to coordinate extracted from the Wikidata project.
-This mapping is stored in data/wikidata.json and can be rebuilt by running this Python module.
+Uses a precomputed mapping from domain to coordinate to country extracted from the Wikidata project.
+This mapping is stored in data/wikidata.tsv and can be rebuilt by running this Python module.
 
 Author: Shilad Sen
+Adapted by: Isaac Johnson
 
 """
+import csv
 import json
 import os
-import traceback
+import requests
 
 from shapely.geometry import shape, Point
 
 from gputils import *
+
+WIKIDATA_HEADER = ['domain', 'lat', 'lon', 'country']
 
 class WikidataProvider:
     """
@@ -23,59 +27,36 @@ class WikidataProvider:
     Results are cached so that domains are only geocoded once.
     """
     def __init__(self, cache_path=None):
-        if not cache_path: cache_path = get_feature_data_path('wikidata')
+        if not cache_path: cache_path = get_data_path('wikidata.tsv')
         if not os.path.isfile(cache_path):
             raise GPException('wikidata results not available...')
-        self.cache_path = cache_path
 
         warn('reading wikidata results...')
-        n = 0
         self.domains = {}
-        for line in gp_open(self.cache_path):
-            tokens = line.split('\t')
-            if len(tokens) == 2:
-                domain = tokens[0].strip()
-                iso = tokens[1].strip()
-                if not iso: iso = None
-                self.domains[domain] = iso
-                n += 1
-            else:
-                warn('invalid wikidata line: %s' % repr(line))
-        warn('finished reading %d wikidata entries' % n)
-
-        f = open(get_data_path('wikidata.json'))
-        self.domain_coords = json.load(f)
-        f.close()
+        with open(cache_path, 'r') as fin:
+            tsvreader = csv.reader(fin, delimiter='\t')
+            assert next(tsvreader) == WIKIDATA_HEADER
+            expected_num_columns = len(WIKIDATA_HEADER)
+            domain_idx = WIKIDATA_HEADER.index('domain')
+            country_idx = WIKIDATA_HEADER.index('country')
+            for line in tsvreader:
+                if len(line) == expected_num_columns:
+                    domain = line[domain_idx]
+                    country = line[country_idx]
+                    self.domains[domain] = country
+                else:
+                    warn('invalid wikidata line: %s' % repr(line))
+        warn(f'finished reading {len(self.domains)} wikidata entries')
 
     def get(self, url):
         domain = url2registereddomain(url)
         if not domain:
             return None
-        r = self.domains.get(domain)
-        if r:
-            return r
-        elif domain in self.domain_coords:
-            coords = self.domain_coords[domain]
-            cc = coord_to_country(coords)
-            self.domains[domain] = cc
-            self.add_cache_line(domain + u'\t' + (cc if cc else ''))
-            return cc
+        country = self.domains.get(domain)
+        if country:
+            return country
         else:
             return None
-
-    def add_cache_line(self, line):
-        f = gp_open(self.cache_path, 'a')
-        f.write(line + u'\n')
-        f.close()
-
-    def load_region_data(self, region_geoms_geojson):
-        with open(region_geoms_geojson, 'r') as fin:
-            regions = json.load(fin)['features']
-        region_shapes = {}
-        for c in regions:
-            country_code = c['properties']['ISO_A2']
-            region_shapes[country_code] = shape(c['geometry'])
-        return region_shapes
 
 class WikidataFeature:
     def __init__(self, provider=None):
@@ -93,33 +74,24 @@ class WikidataFeature:
 def test_wikidata():
     provider = WikidataProvider()
     assert(not provider.get('foo'))
-    assert(provider.get('http://www.ac.gov.br') == 'br')
-    assert(provider.get('https://www.ac.gov.br') == 'br')
-    assert(provider.get('https://www.ibm.com/foo/bar') == 'us')
+    assert(provider.get('http://www.ac.gov.br') == 'Brazil')
+    assert(provider.get('https://www.ac.gov.br') == 'Brazil')
+    assert(provider.get('https://www.ibm.com/foo/bar') == 'United States')
 
 
 def test_coord_to_country():
-    assert(coord_to_country("25.269722|55.309444|0.000000|0") == 'ae')
-
-
-def coord_to_country(wikidata_coord):
-    parts = wikidata_coord.split('|')
-    lat = float(parts[0])
-    lng = float(parts[1])
-
-    url = 'http://nominatim.openstreetmap.org/reverse?format=json&lat=%.4f&lon=%.4f' % (lat, lng)
-    f = urllib.request.urlopen(url)
-    js = json.load(f)
-    if js and js['address'] and js['address']['country_code']:
-        return js['address']['country_code']
-    else:
-        return None
+    region_shapes = get_region_data(region_qids_tsv=os.path.join(DATA_DIR, 'countries', 'base_regions_qids.tsv'),
+                                    region_geoms_geojson=os.path.join(DATA_DIR, 'countries', 'ne_10m_admin_0_map_units.geojson'),
+                                    aggregation_tsv=os.path.join(DATA_DIR, 'countries', 'country_aggregation.tsv'))
+    assert(coord_to_country(region_shapes, 25.269722, 55.309444) == 'ae')
 
 def rebuild():
     """Rebuild cache of URLs -> coordinates from Wikidata.
 
     """
-    from SPARQLWrapper import SPARQLWrapper, JSON
+    region_shapes = get_region_data(region_qids_tsv=os.path.join(DATA_DIR, 'countries', 'base_regions_qids.tsv'),
+                                    region_geoms_geojson=os.path.join(DATA_DIR, 'countries', 'ne_10m_admin_0_map_units.geojson'),
+                                    aggregation_tsv=os.path.join(DATA_DIR, 'countries', 'country_aggregation.tsv'))
 
     website_query = """
     # All items with an official website and either coordinates or a headquarters location
@@ -137,31 +109,114 @@ def rebuild():
     """
     # 734,702 results as of 16 February 2022
 
-    sparql = SPARQLWrapper("https://query.wikidata.org/sparql",
-                           agent='https://github.com/shilad/geo-provenance')
-    sparql.setQuery(website_query)
-    sparql.setReturnFormat(JSON)
-    results = sparql.queryAndConvert()
+    r = requests.get("https://query.wikidata.org/sparql",
+                     params={'format': 'json', 'query': website_query},
+                     headers={'User-Agent': 'isaac@wikimedia.org; geoprovenance'})
+    results = r.json()
     all_data = results['results']['bindings']
+    seen = set()
 
-    wikidata_coords = {}
-    for website in all_data:
-        try:
-            url = website['websiteurl']['value']
-            coords = website['coords']['value']
-            lon_lat = coords.replace("Point", "")[1:-1].split()  # ex: Point(14.4690742 50.0674744)
-            domain = url2registereddomain(url)
+    with open(DATA_DIR + '/wikidata.tsv', 'w') as fout:
+        tsvwriter = csv.writer(fout, delimiter='\t')
+        tsvwriter.writerow(WIKIDATA_HEADER)
+        for website in all_data:
             try:
-                # ensure valid numeric and convert to <lat>|<lon> representation
-                wikidata_coords[domain] = '|'.join([str(float(lon_lat[1])), str(float(lon_lat[0]))])
-            except Exception:
-                warn('invalid coordinates: %s' % coords)
-        except Exception:
-            warn('invalid sparql result: %s' % str(website))
-            traceback.print_exc()
+                url = website['websiteurl']['value']
+                domain = url2registereddomain(url)
+                if domain in seen:
+                    continue
+                elif not domain:
+                    warn(f'blank domain from {url}')
+                    continue
+                seen.add(domain)
 
-    with open(DATA_DIR + '/wikidata.json', 'w') as fout:
-        json.dump(wikidata_coords, fout)
+                coords = website['coords']['value']
+                lon, lat = coords.replace("Point", "")[1:-1].split()  # ex: Point(14.4690742 50.0674744)
+                country = None
+                try:
+                    country = coord_to_country(region_shapes, float(lon), float(lat))
+                except Exception:
+                    # NOTE: may want to suppress this -- there's a lot of headquarters locations that are place QIDs
+                    # such as the QID for Paris instead of coordinates in Paris
+                    # TODO: maybe fix this in the SPARQL query?
+                    warn(f'invalid coordinates: {coords}')
+
+                if country is not None:
+                    tsvwriter.writerow([domain, lat, lon, country])
+            except Exception:
+                warn(f'invalid sparql result: {website}')
+
+def coord_to_country(region_shapes, lon, lat):
+    """Determine which region contains a lat-lon coordinate.
+
+    Depends on shapely library and region_shapes object, which contains a dictionary
+    mapping QIDs to shapely geometry objects.
+    """
+    try:
+        pt = Point(lon, lat)
+        for region_name, region_shape in region_shapes:
+            if region_shape.contains(pt):
+                return region_name
+    except Exception:
+        warn(f'error geolocating: ({lat}, {lon})')
+    warn(f'did not find: ({lat}, {lon})')
+    return None
+
+def get_aggregation_logic(aggregates_tsv):
+    """Mapping of regions -> regions not directly associated with them.
+
+    e.g., Sahrawi Arab Democratic Republic (Q40362) -> Western Sahara (Q6250)
+    """
+    expected_header = ['Aggregation', 'From', 'QID To', 'QID From']
+    aggregation = {}
+    with open(aggregates_tsv, 'r') as fin:
+        tsvreader = csv.reader(fin, delimiter='\t')
+        assert next(tsvreader) == expected_header
+        for line in tsvreader:
+            try:
+                qid_to = line[2]
+                qid_from = line[3]
+                if qid_from:
+                    aggregation[qid_from] = qid_to
+            except Exception:
+                warn(f"Skipped: {line}")
+    return aggregation
+
+def get_region_data(region_qids_tsv, region_geoms_geojson, aggregation_tsv):
+    # load in base regions
+    qid_to_region = {}
+    with open(region_qids_tsv, 'r') as fin:
+        tsvreader = csv.reader(fin, delimiter='\t')
+        assert next(tsvreader) == ['Region', 'QID']
+        for line in tsvreader:
+            region = line[0]
+            qid = line[1]
+            qid_to_region[qid] = region
+    warn(f"Loaded {len(qid_to_region)} base regions.")
+    # load in additional regions that should be mapped to a more canonical region name
+    aggregation = get_aggregation_logic(aggregation_tsv)
+    for qid_from in aggregation:
+        qid_to = aggregation[qid_from]
+        if qid_to in qid_to_region:
+            qid_to_region[qid_from] = qid_to_region[qid_to]
+        else:
+            warn(f"-- Skipping aggregation for {qid_from} to {qid_to}")
+    warn(f"Now {len(qid_to_region)} region pairs after adding aggregations.")
+
+    # load in geometries for the regions identified via Wikidata
+    with open(region_geoms_geojson, 'r') as fin:
+        regions = json.load(fin)['features']
+    region_shapes = []
+    skipped = []
+    for c in regions:
+        qid = c['properties']['WIKIDATAID']
+        if qid in qid_to_region:
+            region_shapes.append((qid_to_region[qid], shape(c['geometry'])))
+        else:
+            skipped.append('{0} ({1})'.format(c['properties']['NAME'], qid))
+    warn(f"Loaded {len(region_shapes)} region geometries. Skipped {len(skipped)}: {skipped}")
+
+    return region_shapes
 
 if __name__ == '__main__':
     rebuild()

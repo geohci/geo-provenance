@@ -10,12 +10,14 @@ Summary:
 * I retained the WHOIS feature even though it's also high cost because of the existing cache and high accuracy (80%)
 * I retained the Wikidata feature because of the high accuracy (93%) and simplicity of making a single SPARQL query
 * I retained the URL features (milgov and tld) because of their high accuracy (>90%) and simplicity
+* I updated the country list to match the ones I was using for [other analyses](https://github.com/geohci/wiki-region-groundtruth)
+* Switched to full country names as the underlying country "vocab" to align with other analyses and include regions without ISO-2 codes
+* Switched in local point-to-country inference for Nominatim to reduce external dependency / save high volume of API calls
 
 ### Installing necessary Python modules:
 
 ```bash
 pip install shapely
-pip install SPARQLWrapper
 pip install tldextract
 ```
 
