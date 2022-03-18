@@ -22,6 +22,7 @@ import os
 import re
 
 import pythonwhois
+import whois  # pip library, not this file
 
 from gputils import *
 
@@ -35,9 +36,10 @@ class WhoisProvider:
     def __init__(self, cache_path=None):
         self.cache_path = cache_path
         if not self.cache_path:
-            self.cache_path = get_feature_data_path('whois')
+            # NOTE: set to gold for model training (otherwise `model` for full cache)
+            self.cache_path = get_data_path('whois_countries.tsv', dirtype='gold')
         if not os.path.isfile(self.cache_path):
-            raise GPException('whois cache %s does not exist.' % self.cache_path)
+            raise GPException(f'whois cache {self.cache_path} does not exist.')
 
         warn('reading whois results...')
         nlines = 0
@@ -55,17 +57,17 @@ class WhoisProvider:
                     if country != '??': self.cache[domain] = country
                 else:
                     dist = {}
-                    for pair in whois.split(','):
+                    for pair in whois.split(';'):
                         (country, n) = pair.split('|')
                         dist[country] = int(n)
                     total = 1.0 * sum(dist.values())
-                    if sum > 0:
+                    if total > 0:
                         for c in dist: dist[c] /= total
                     self.cache[domain] = dist
                 nlines += 1
             else:
-                warn('invalid whois line: %s' % repr(line))
-        warn('finished reading %d whois entries' % nlines)
+                warn(f'invalid whois line: {line}')
+        warn(f'finished reading {nlines} whois entries')
         f.close()
 
         self.countries = read_countries()
@@ -82,7 +84,7 @@ class WhoisProvider:
             return None
         if d not in self.cache:
             self.add_to_cache(d)
-        if d not in self.cache or type(self.cache[d]) not in (type(''), type(u'')):
+        if d not in self.cache or type(self.cache[d]) != str:
             return None
         return self.cache[d]
 
@@ -102,35 +104,33 @@ class WhoisProvider:
         return self.cache[d]
 
     def add_to_cache(self, domain):
-        raw = None
         try:
+            warn(f'Running whois lookup for {domain}...')
             raw = retrieve_whois_record(domain)
-        except:
-            warn('whois lookup for %s failed: %s' % (domain, sys.exc_info()[1]))
+        except Exception:
+            warn(f'whois lookup for {domain} failed: {sys.exc_info()[1]}')
             self.cache[domain] = {}
-            self.add_cache_line(domain + u'\t')
+            self.add_cache_line(domain + '\t')
             return
 
         try:
-            parsed = extract_parsed_whois_country(raw, self.countries, self.aliases)
+            parsed = extract_parsed_whois_country(raw, self.aliases, domain)
             if parsed:
                 self.cache[domain] = parsed
-                self.add_cache_line(domain + u'\t' + parsed + '|p')
+                self.add_cache_line(domain + '\t' + parsed + '|p')
                 return
-        except:
-            warn('parsing of whois record for %s failed: %s. Resorting to freetext method.'
-                 % (domain, sys.exc_info()[1]))
+        except Exception:
+            warn(f'parsing of whois record for {domain} failed: {sys.exc_info()[1]}. Resorting to freetext method.')
 
         freetext = extract_freetext_whois_country(raw, self.regexes)
         if freetext:
             self.cache[domain] = freetext
-            pairs = [u'%s|%s' % (cc, n) for (cc, n) in freetext.items()]
-            self.add_cache_line(domain + u'\t' + u','.join(pairs))
+            pairs = [f'{cc}|{n}' for (cc, n) in freetext.items()]
+            self.add_cache_line(domain + '\t' + ','.join(pairs))
 
     def add_cache_line(self, line):
-        f = gp_open(self.cache_path, 'a')
-        f.write(line + u'\n')
-        f.close()
+        with gp_open(self.cache_path, 'a') as f:
+            f.write(line + '\n')
 
 PROVIDER_INST = None
 
@@ -173,13 +173,21 @@ def retrieve_whois_record(domain):
     Retrieves a list of WhoIs records, each of which is a string. Most domains
     will only have one record, but some may require recursive lookups.
     """
-    return pythonwhois.net.get_whois_raw(domain)
+    #return pythonwhois.net.get_whois_raw(domain)
+    return [whois.whois(domain).text]
 
 
-def extract_parsed_whois_country(records, countries, aliases):
+def extract_parsed_whois_country(records, aliases, domain, firsttry=True):
 
-    # First try to extract a parsed record
+    # try whois library
+    cc = whois.WhoisEntry.load(domain, records[0]).get('country')
+    if cc:
+        country = normalize_country(cc, aliases)
+        if country: return country
+
+    # next try to extract a parsed record via pythonwhois
     result = pythonwhois.parse.parse_raw_whois(records)
+
     contact_countries = {}
     for (contact_type, contact_info) in result.get('contacts', {}).items():
         if not contact_info or not contact_info.get('country'): continue
@@ -196,15 +204,19 @@ def extract_parsed_whois_country(records, countries, aliases):
     for l in  [l for l in lines if ('admin' in l and 'country code' in l)]:
         tokens = l.split(':')
         if len(tokens) > 1:
-            cc = normalize_country(tokens[-1].strip(), aliases)
-            if cc: return cc
+            country = normalize_country(tokens[-1].strip(), aliases)
+            if country: return country
     for l in  [l for l in lines if ('admin country' in l)]:
         tokens = l.split(':')
         if len(tokens) > 1:
-            cc = normalize_country(tokens[-1].strip(), aliases)
-            if cc: return cc
+            country = normalize_country(tokens[-1].strip(), aliases)
+            if country: return country
 
-    return None # Failure!
+    if firsttry:
+        # Try a second time with tabs replaced
+        return extract_parsed_whois_country([r.replace("\t", "  ") for r in records], aliases, domain, firsttry=False)
+    else:
+        return None  # Failure!
 
 def extract_freetext_whois_country(records, regexes):
     joined = '\n'.join(records).lower()
@@ -216,8 +228,10 @@ def extract_freetext_whois_country(records, regexes):
 
 def normalize_country(raw, aliases):
     raw = raw.strip().lower()
-    if raw in aliases:
-        return raw  # it's a literal TLD
+    country = iso2_to_country(raw)
+    if country and country in aliases:
+        return country  # iso2 code --> return country match
+    # otherwise check if string matches a country alias
     for tld in aliases:
         if raw in aliases[tld]:
             return tld
@@ -233,67 +247,70 @@ def build_regexes(aliases):
         pattern = "(^|\\b)(" + orred + ')($|\\b)'
         regexes[cc] = re.compile(pattern)
         n += len(aliases)
-    warn('finished building %d country alias regexes' % n)
+    warn(f'finished building {n} country alias regexes')
     return regexes
 
 
-def read_aliases(dir=DATA_DIR):
+def read_aliases():
     ambiguous = {}
-    for line in gp_open(dir + '/manual_aliases.tsv'):
+    for line in gp_open(get_data_path('manual_aliases_countries.tsv', dirtype='resources')):
         tokens = line.split('\t')
         alias = tokens[0].strip().lower()
-        code = tokens[1].strip().lower()
-        ambiguous[alias] = code
+        country = tokens[1].strip()
+        ambiguous[alias] = country
 
     mapping = dict(ambiguous)
-    for line in gp_open(dir + '/geonames_aliases.tsv'):
+    for line in gp_open(get_data_path('geonames_aliases.tsv', dirtype='resources')):
         tokens = line.split('\t')
-
         code = tokens[8].strip().lower()
-        for alias in tokens[3].strip().lower().split(","):
-            if len(alias) <= 3:
-                pass
-            elif alias in ambiguous:
-                pass    # already handled
-            elif alias in mapping and mapping[alias] != code:
-                warn('duplicate alias %s between %s and %s' % (alias, code, mapping[alias]))
-            else:
-                mapping[alias] = code
+        country = iso2_to_country(code)
+        if country:
+            for alias in tokens[3].strip().lower().split(","):
+                if len(alias) <= 3:
+                    pass   # too short -- risk overmatching
+                elif alias in ambiguous:
+                    pass    # already handled
+                elif alias in mapping and mapping[alias] != country:
+                    warn(f'duplicate alias {alias} between {country} and {mapping[alias]}')
+                else:
+                    mapping[alias] = country
+        else:
+            warn(f'{code} did not have a corresponding country and is being skipped when building aliases.')
 
     aliases = collections.defaultdict(list)
-    for (alias, cc) in mapping.items():
-        aliases[cc].append(alias)
+    for (alias, country) in mapping.items():
+        aliases[country].append(alias)
 
     return dict(aliases)
 
 def test_parsed_provider():
     provider = WhoisProvider()
     assert(not provider.getParsed('foo'))
-    assert(provider.getParsed('http://www.unesco.org/foo/bar') == 'fr')
-    assert(provider.getParsed('http://budapestbylocals.com/foo/bar') == 'hu')
+    assert(provider.getParsed('http://www.unesco.org/foo/bar') == 'France')
+    assert(provider.getParsed('http://budapestbylocals.com/foo/bar') == 'Hungary')
 
 def test_freetext_provider():
     provider = WhoisProvider()
-    assert(provider.getFreetext('http://foo.google.ca/foo/bar') == {'us' : 0.5, 'ca' : 0.5})
+    assert(provider.getFreetext('http://foo.google.ca/foo/bar') == {'United States of America' : 0.5, 'Canada' : 0.5})
 
 def test_online_whois():
-    countries = read_countries()
+    countries = read_countries()  # no effect just make sure it works
     aliases = read_aliases()
-    records = retrieve_whois_record('shilad.com')
-    assert('Shilad Sen' in records[0])
-    assert(extract_parsed_whois_country(records, countries, aliases) == 'us')
+    records = retrieve_whois_record('wikimediafoundation.org')
+    assert('Wikimedia Foundation, Inc.' in records[0])
+    assert(extract_parsed_whois_country(records, aliases, 'wikimediafoundation.org') == 'United States of America')
     records = retrieve_whois_record('porsche.com')
-    assert(extract_parsed_whois_country(records, countries, aliases) == 'de')
+    assert(extract_parsed_whois_country(records, aliases, 'porsche.com') == 'Germany')
 
 
 
 def test_freetext_whois():
     aliases = read_aliases()
     records = retrieve_whois_record('macalester.edu')
-    # print '\n'.join(records)
+    print(records)
     regexes = build_regexes(aliases)
     freetext = extract_freetext_whois_country(records, regexes)
-    assert(freetext == {'us' : 3})
+    assert(freetext == {'United States of America' : 3})
 
 
 def test_parsed():
@@ -428,5 +445,5 @@ LACK OF A DOMAIN RECORD IN THE WHOIS DATABASE DOES
 NOT INDICATE DOMAIN AVAILABILITY.
         """
         ]
-    freetext = extract_parsed_whois_country(records, read_countries(), aliases)
-    assert(freetext == 'gb')
+    freetext = extract_parsed_whois_country(records, aliases, 'hararemusic.com')
+    assert(freetext == 'United Kingdom')

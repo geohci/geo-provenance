@@ -8,11 +8,20 @@ This fork is aimed at individual accuracy and simplicity, so I have favored high
 Summary:
 * I dropped the page language feature. This had high coverage (96%) but low accuracy (61%) and introduces a lot of overhead for the crawling of webpages.
 * I retained the WHOIS feature even though it's also high cost because of the existing cache and high accuracy (80%)
-* I retained the Wikidata feature because of the high accuracy (93%) and simplicity of making a single SPARQL query
+* I retained the Wikidata feature because of the high accuracy (93%) and simplicity of making a single SPARQL query (actually two)
 * I retained the URL features (milgov and tld) because of their high accuracy (>90%) and simplicity
 * I updated the country list to match the ones I was using for [other analyses](https://github.com/geohci/wiki-region-groundtruth)
-* Switched to full country names as the underlying country "vocab" to align with other analyses and include regions without ISO-2 codes
-* Switched in local point-to-country inference for Nominatim to reduce external dependency / save high volume of API calls
+* I switched to full country names as the underlying country "vocab" to align with other analyses and include regions without ISO-2 codes
+* I switched in local point-to-country inference for Nominatim to reduce external dependency / save high volume of API calls
+* I updated the pythonwhois library (mainly fixing regexes by explicitly making `r"..." strings`) per https://github.com/joepie91/python-whois/issues
+* I added manual aliases for countries that aren't in original ISO2 code vocab and USA for United States
+* I removed `cs` for Czech Republic as a manual alias because it matches against `.cs` (shows up in emails as with computer science departments)
+* I updated tests etc. in the various Python files to match the above changes (which can be run via `pytest -vv <filename>`)
+* I restructured the data folder to account for updated data -- it can be populated based on the original via `gputils.py` and running the new wikidata.py script
+* Updated geonames.txt with current version as of 18 March 2022: https://download.geonames.org/export/dump/countryInfo.txt
+
+TODOs:
+* Train new model and update model coefficients
 
 ### Installing necessary Python modules:
 
@@ -34,7 +43,7 @@ $ echo 'http://www.timeout.com/dublin/' | python ./run_inferrer.py
 You would see the following output:
 
 ```text
-http://www.timeout.com/dublin/  gb      0.8259  {'gb' : 0.8259, 'us' : 0.0628, 'fr' : 0.0008, 'ca' : 0.0006, 'ru' : 0.0006, 'in' : 0.0005, 'de' : 0.0005, 'se' : 0.0005, 'it' : 0.0005, 'pl' : 0.0005}
+http://www.timeout.com/dublin/	United Kingdom	0.8390	{'United Kingdom' : 0.8390, 'England' : 0.0522, 'United States of America' : 0.0012, 'France' : 0.0009, 'Russia' : 0.0006, 'Germany' : 0.0006, 'Sweden' : 0.0005, 'Italy' : 0.0005, 'Poland' : 0.0005, 'Spain' : 0.0005}
 ```
 
 run_inferrer.py outputs the following four tab-separated fields: 
@@ -44,11 +53,10 @@ run_inferrer.py outputs the following four tab-separated fields:
 3. The estimated probability the most probable country is correct (in this case, about 83%).
 4. The top 10 candidate countries, along with their associated probabilities, in JSON format.
 
-If you run the program from somewhere outside of the `py` directory, or would like to use a larger pre-built feature cache (see information below), you can specify the feature directory, or both the features and data directories, from the command line:
+If you run the program from somewhere outside of the `py` directory, you can specify the data directory, from the command line:
 
 ```bash
-$ python run_inferrer.py path/to/features/dir
-$ python run_inferrer.py path/to/features/dir path/to/data/dir
+$ python run_inferrer.py path/to/data/dir
 ```
 
 ### Incorporating the module into your own Python program.
@@ -59,9 +67,6 @@ import gpinfer
 
 # necessary iff not run from the "py" directory
 gputils.set_data_dir('/path/to/data')
-
-# necessary iff not run from the "py" directory or alternate feature caches are used (see below)
-gputils.set_feature_dir('/path/to/feature')
 
 inferrer = gpinfer.LogisticInferrer()
 

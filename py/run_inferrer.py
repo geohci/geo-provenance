@@ -36,19 +36,16 @@ def main(inferrer, input, output):
             else:
                 output.write(url + '\tunknown\t0.0\t{}\n')
                 output.flush()
-        except:
+        except Exception:
             warn('url %s failed: ' % url)
             traceback.print_exc()
         time.sleep(10)
 
 if __name__ == '__main__':
     if len(sys.argv) == 2:
-        set_feature_dir(sys.argv[1])
-    elif len(sys.argv) == 3:
-        set_feature_dir(sys.argv[1])
         set_data_dir(sys.argv[2])
     elif len(sys.argv) != 1:
-        warn('usage: %s [feature_dir [data_dir]]')
+        warn('usage: %s [data_dir]')
         sys.exit(1)
 
     inferrer = LogisticInferrer()

@@ -6,7 +6,7 @@ import math
 from gputils import *
 from country import read_countries
 from milgov import MilGovFeature
-from whois import FreetextWhoisFeature, ParsedWhoisFeature
+from gpwhois import FreetextWhoisFeature, ParsedWhoisFeature
 from wikidata import WikidataFeature
 from tld import TldFeature
 
@@ -18,7 +18,7 @@ class PriorFeature:
         self.name = 'prior'
         self.prior = {}
         for c in countries:
-            self.prior[c.iso] = c.prior
+            self.prior[c.name] = c.prior
         if len(self.prior) == 0:
             raise Exception('no country priors!')
 
@@ -49,8 +49,8 @@ class LogisticInferrer:
                 WikidataFeature(),
                 TldFeature()
             ]
-            self.intercept = -7.06
-            self.coefficients = [2.38, 5.39, 2.06, 2.87, 2.03, 7.03]
+            self.intercept = -7.23
+            self.coefficients = [3.30, 6.56, 2.53, 3.74, 4.05, 7.00]
         else:
             if not intercept or not coefficients:
                 raise GPException("if features are specified, intercept and coefficients must be too.")
@@ -72,10 +72,10 @@ class LogisticInferrer:
             (conf, dist) = f.infer(url_info)
             if dist:
                 for c in self.countries:
-                    rows[c.iso].append(dist.get(c.iso, 0.0))
+                    rows[c.name].append(dist.get(c.name, 0.0))
             else:
                 for c in self.countries:
-                    rows[c.iso].append(1.0 / len(self.countries))
+                    rows[c.name].append(1.0 / len(self.countries))
 
         return rows
 
@@ -89,8 +89,8 @@ class LogisticInferrer:
         for (urlinfo, actual) in data:
             rows = self.make_rows(urlinfo)
             for c in self.countries:
-                Y.append(1 if c.iso == actual else 0)
-                X.append(rows[c.iso])
+                Y.append(1 if c.name == actual else 0)
+                X.append(rows[c.name])
 
         self.reg = LogisticRegression()
         self.reg.fit(X, Y)
@@ -112,13 +112,12 @@ class LogisticInferrer:
         result = {}
 
         for c in self.countries:
-            result[c.iso] = self.intercept
+            result[c.name] = self.intercept
         for (i, f) in enumerate(self.features):
             (conf, dist) = f.infer(url_info)
             if conf > 0 and dist:
                 for c in dist:
-                    c2 = u'gb' if c == u'uk' else c
-                    result[c2] += self.coefficients[i] * dist[c]
+                    result[c] += self.coefficients[i] * dist[c]
             else:
                 for c in result:
                     result[c] += self.coefficients[i] * 1.0 / len(result)

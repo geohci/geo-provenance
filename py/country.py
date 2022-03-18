@@ -3,15 +3,10 @@ from gputils import *
 
 
 class Country:
-    def __init__(self, row_tokens):
-        self.iso = row_tokens[0].lower()
-        self.iso3 = row_tokens[1].lower()
-        self.fips = row_tokens[3].lower()
-        self.name = row_tokens[4]
-        self.population = int(row_tokens[7])
-        self.tld = row_tokens[9][1:].lower()  # ".uk" -> "uk"
-        self.langs = row_tokens[15].split(',')
-        self.cleaned_langs = [l.lower().split('-')[0] for l in self.langs]
+    def __init__(self, iso, tld, name=None):
+        self.iso = iso
+        self.name = name or iso2_to_country(self.iso)
+        self.tld = tld
         self.prior = None  # Prior probability of the country generating a webpage
 
     def __str__(self):
@@ -19,37 +14,59 @@ class Country:
 
     def __repr__(self):
         return (
-            '{Country %s iso=%s, iso3=%s, fips=%s, pop=%s, tld=%s langs=%s prior=%s}' %
-            (self.name, self.iso, self.iso3, self.fips, self.population, self.tld, self.cleaned_langs, self.prior)
+            '{Country %s iso=%s, tld=%s, prior=%s}' %
+            (self.name, self.iso, self.tld, self.prior)
         )
 
-def read_countries(path_geonames=None, path_prior=None):
-    if not path_geonames: path_geonames = get_data_path('geonames.txt')
-    if not path_prior: path_prior = get_data_path('priors.tsv')
-    iso_countries = {}
+def read_countries(path_geonames=None, path_prior=None, path_manual=None):
+    if not path_geonames: path_geonames = get_data_path('geonames.txt', dirtype='resources')
+    if not path_prior: path_prior = get_data_path('priors_countries.tsv', dirtype='model')
+    if not path_manual: path_manual = get_data_path('manual_geonames.tsv', dirtype='resources')
+    countries = {}
 
+    # read in geonames data
     f = gp_open(path_geonames)
     for line in f:
         if line.startswith('#'):
             continue
-        c = Country(line.strip().split('\t'))
-        iso_countries[c.iso] = c
+        row_tokens = line.strip().split('\t')
+        c = Country(iso=row_tokens[0].lower(), tld = row_tokens[9][1:].lower())  # tld: ".uk" -> "uk"
+        if c.name:
+            countries[c.name] = c
+
+    # read in manual data
+    f = gp_open(path_manual)
+    assert next(f).strip().split("\t") == ['name', 'tld', 'iso']
+    for line in f:
+        row_tokens = line.strip().split('\t')
+        name = row_tokens[0]
+        try:
+            iso = row_tokens[2].lower()
+        except IndexError:
+            iso = None
+        try:
+            tld = row_tokens[1][1:].lower()
+        except IndexError:
+            tld = None
+        c = Country(name=row_tokens[0], iso=iso, tld=tld)  # tld: ".uk" -> "uk"
+        if c.name:
+            countries[c.name] = c
 
     # read prior dataset
     priors = collections.defaultdict(float)
     for line in open(path_prior):
         tokens = line.strip().split('\t')
-        iso = tokens[0]
+        c = tokens[0]
         prior = float(tokens[1])
-        priors[iso] = prior
+        priors[c] = prior
 
     # normalize priors to sum to 1
     total = 1.0 * sum(priors.values())
-    for iso in priors: priors[iso] /= total
+    for c in priors: priors[c] /= total
 
     # allocate another 1% for smoothing across all countries, renormalize
-    k = 0.01 / len(iso_countries)
-    for iso in iso_countries:
-        iso_countries[iso].prior = (priors[iso] + k) / 1.01
+    k = 0.01 / len(countries)
+    for c in countries:
+        countries[c].prior = (priors.get(c, 0) + k) / 1.01
 
-    return iso_countries.values()
+    return countries.values()

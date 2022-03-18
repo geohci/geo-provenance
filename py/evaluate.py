@@ -13,6 +13,7 @@ def evaluate(gold):
     missed_ps = []
     correct_ps = []
     for i in range(folds):
+        print(f"Fold {i} / {folds}")
         test = subsets[i]
         train = sum(subsets[0:i] + subsets[i+1:], [])
         inf = LogisticInferrer()
@@ -21,7 +22,7 @@ def evaluate(gold):
             total += 1
             (conf, dist) = inf.infer(url)
             if not dist:
-                warn('no prediction for %s' % url)
+                warn(f'no prediction for {url}')
                 continue
             maxp = max(dist.values())
             bestc = [c for c in dist if dist[c] == maxp][0]
@@ -30,16 +31,16 @@ def evaluate(gold):
                 correct += 1
             else:
                 missed_ps.append(maxp)
-                print('missed', url, '- guessed', bestc, 'was', actual)
+                print(f'missed {url} - guessed {bestc} was {actual}')
 
     inf = LogisticInferrer()
     inf.train(gold)
 
     print('\n\nmodel results:')
-    print('%d of %d correct (%.2f%%)' % (correct, total, 100.0 * correct / total))
-    print('calibration: correct mean probability is: %.3f' % (sum(correct_ps) / len(correct_ps)))
-    print('calibration: incorrect mean probability is: %.3f' % (sum(missed_ps) / len(missed_ps)))
-    print('final model:', inf.get_equation())
+    print(f'{correct} of {total} correct {100 * correct / total:.2f}%')
+    print(f'calibration: correct mean probability is: {sum(correct_ps) / len(correct_ps):.3f}')
+    print(f'calibration: incorrect mean probability is: {sum(missed_ps) / len(missed_ps):.3f}')
+    print(f'final model: {inf.get_equation()}')
 
 if __name__ == '__main__':
     gold = read_gold()

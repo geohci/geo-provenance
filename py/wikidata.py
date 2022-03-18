@@ -27,7 +27,7 @@ class WikidataProvider:
     Results are cached so that domains are only geocoded once.
     """
     def __init__(self, cache_path=None):
-        if not cache_path: cache_path = get_data_path('wikidata.tsv')
+        if not cache_path: cache_path = get_data_path('wikidata_countries.tsv', dirtype='model')
         if not os.path.isfile(cache_path):
             raise GPException('wikidata results not available...')
 
@@ -45,8 +45,14 @@ class WikidataProvider:
                     country = line[country_idx]
                     self.domains[domain] = country
                 else:
-                    warn('invalid wikidata line: %s' % repr(line))
+                    warn(f'invalid wikidata line: {line}')
         warn(f'finished reading {len(self.domains)} wikidata entries')
+
+        # a few known data quality issues -- largely arising from duplicates of URL domains
+        # TODO: better approach that doesn't include domains with high ambiguity?
+        self.domains['ibm.com'] = 'United States of America'
+        self.domains['nytimes.com'] = 'United States of America'
+
 
     def get(self, url):
         domain = url2registereddomain(url)
@@ -80,71 +86,105 @@ def test_wikidata():
 
 
 def test_coord_to_country():
-    region_shapes = get_region_data(region_qids_tsv=os.path.join(DATA_DIR, 'countries', 'base_regions_qids.tsv'),
-                                    region_geoms_geojson=os.path.join(DATA_DIR, 'countries', 'ne_10m_admin_0_map_units.geojson'),
-                                    aggregation_tsv=os.path.join(DATA_DIR, 'countries', 'country_aggregation.tsv'))
-    assert(coord_to_country(region_shapes, 25.269722, 55.309444) == 'ae')
+    region_shapes = get_region_data(region_qids_tsv=get_data_path('base_regions_qids.tsv', dirtype='country'),
+                                    region_geoms_geojson=get_data_path('ne_10m_admin_0_map_units.geojson', dirtype='country'),
+                                    aggregation_tsv=get_data_path('country_aggregation.tsv', dirtype='country'))
+    assert(coord_to_country(region_shapes, 55.309444, 25.269722) == 'United Arab Emirates')
 
 def rebuild():
     """Rebuild cache of URLs -> coordinates from Wikidata.
 
     """
-    region_shapes = get_region_data(region_qids_tsv=os.path.join(DATA_DIR, 'countries', 'base_regions_qids.tsv'),
-                                    region_geoms_geojson=os.path.join(DATA_DIR, 'countries', 'ne_10m_admin_0_map_units.geojson'),
-                                    aggregation_tsv=os.path.join(DATA_DIR, 'countries', 'country_aggregation.tsv'))
+    region_shapes = get_region_data(region_qids_tsv=get_data_path('base_regions_qids.tsv', dirtype='country'),
+                                    region_geoms_geojson=get_data_path('ne_10m_admin_0_map_units.geojson', dirtype='country'),
+                                    aggregation_tsv=get_data_path('country_aggregation.tsv', dirtype='country'))
 
+    # single query too large so can break into http and https as a rough split
+    # and then append query2 results to query1. Clause like the following (after FILTER(BOUND(?coords))) works:
+    # FILTER(STRSTARTS(STR(?websiteurl), 'http:'))
+    # Also, only 5 URLs that don't start with http(s) (due to capitalization)
+    # To check, replace STRSTARTS FILTER with `FILTER(!STRSTARTS(STR(?websiteurl), 'http'))`
+    # Close to 1M URLs and 510,037 retained as of 17 March 2022 in total
     website_query = """
     # All items with an official website and either coordinates or a headquarters location
     SELECT
-      ?websiteurl ?coords
+    ?websiteurl ?coords
     WHERE
     {
       # items with a website
       ?item wdt:P856 ?websiteurl .
       # and coordinate location or headquarters or country
-      OPTIONAL { ?item wdt:P159 ?coords . }
       OPTIONAL { ?item wdt:P625 ?coords . }
+      OPTIONAL { ?item wdt:P159 ?hq . 
+                 ?hq wdt:P625 ?coords .}
       FILTER(BOUND(?coords)).
     }
     """
-    # 734,702 results as of 16 February 2022
 
+    # TODO: challenge that many multinational companies have multiple domain names and only the first is used so e.g.,
+    # ibm.com/sweden -> Sweden becomes the gold data for IBM
+    print("Querying WDQS...")
     r = requests.get("https://query.wikidata.org/sparql",
                      params={'format': 'json', 'query': website_query},
                      headers={'User-Agent': 'isaac@wikimedia.org; geoprovenance'})
     results = r.json()
     all_data = results['results']['bindings']
+    print(f"{len(all_data)} URLs retrieved.")
     seen = set()
+    written = 0
+    not_found = 0
+    no_domain = 0
+    invalid_coords = 0
+    invalid_sparql = 0
+    already_seen = 0
 
-    with open(DATA_DIR + '/wikidata.tsv', 'w') as fout:
+    print("Processing results...")
+    with open(get_data_path('wikidata_countries.tsv', dirtype='model'), 'w') as fout:
         tsvwriter = csv.writer(fout, delimiter='\t')
         tsvwriter.writerow(WIKIDATA_HEADER)
-        for website in all_data:
+        for i, website in enumerate(all_data, start=1):
+            if i % 50000 == 0:
+                print((f"{i} URLs processed. "
+                       f"{already_seen} skipped as duplicates. "
+                       f"{written} written. "
+                       f"{no_domain} no domain after parsing URL. "
+                       f"{not_found} had coordinates but no country found. "
+                       f"{invalid_coords} had invalid coordinates. "
+                       f"{invalid_sparql} had invalid sparql."))
             try:
                 url = website['websiteurl']['value']
                 domain = url2registereddomain(url)
                 if domain in seen:
+                    already_seen += 1
                     continue
                 elif not domain:
-                    warn(f'blank domain from {url}')
+                    no_domain += 1
                     continue
                 seen.add(domain)
 
                 coords = website['coords']['value']
                 lon, lat = coords.replace("Point", "")[1:-1].split()  # ex: Point(14.4690742 50.0674744)
-                country = None
                 try:
                     country = coord_to_country(region_shapes, float(lon), float(lat))
                 except Exception:
-                    # NOTE: may want to suppress this -- there's a lot of headquarters locations that are place QIDs
-                    # such as the QID for Paris instead of coordinates in Paris
-                    # TODO: maybe fix this in the SPARQL query?
-                    warn(f'invalid coordinates: {coords}')
+                    invalid_coords += 1
+                    continue
 
                 if country is not None:
                     tsvwriter.writerow([domain, lat, lon, country])
+                    written += 1
+                else:
+                    not_found += 1
             except Exception:
-                warn(f'invalid sparql result: {website}')
+                invalid_sparql += 1
+
+    print((f"Complete! {i} URLs processed. "
+           f"{already_seen} skipped as duplicates. "
+           f"{written} written. "
+           f"{no_domain} no domain after parsing URL. "
+           f"{not_found} had coordinates but no country found. "
+           f"{invalid_coords} had invalid coordinates. "
+           f"{invalid_sparql} had invalid sparql."))
 
 def coord_to_country(region_shapes, lon, lat):
     """Determine which region contains a lat-lon coordinate.
@@ -159,7 +199,7 @@ def coord_to_country(region_shapes, lon, lat):
                 return region_name
     except Exception:
         warn(f'error geolocating: ({lat}, {lon})')
-    warn(f'did not find: ({lat}, {lon})')
+    #warn(f'did not find: ({lat}, {lon})')
     return None
 
 def get_aggregation_logic(aggregates_tsv):

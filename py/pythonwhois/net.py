@@ -104,4 +104,8 @@ def whois_request(domain, server, port=43):
 		if len(data) == 0:
 			break
 		buff += data
-	return buff.decode("utf-8", "replace")
+	try:
+		d = buff.decode("utf-8", "replace")
+	except UnicodeDecodeError:
+		d = buff.decode("latin-1")
+	return d
