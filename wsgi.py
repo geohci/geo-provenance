@@ -127,11 +127,15 @@ def get_references(wikitext):
                         if url is None:
                             url = potential_urls[0]
                     # if internet archive link, seek to extract original URL out of it
-                    if tldextract.extract(url).domain == 'archive':
+                    tld = tldextract.extract(url)
+                    if tld.domain == 'archive':
                         path = urlparse(url).path
                         start_of_archived_url = path.find('http')
                         if start_of_archived_url != -1:
                             url = path[start_of_archived_url:]
+                    # google books -- common domain that doesn't have much geographic meaning
+                    elif tld.subdomain == 'books' and tld.domain == 'google':
+                        url = None
             except Exception:
                 continue
             domain = ''
