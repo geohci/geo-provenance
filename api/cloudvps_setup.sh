@@ -11,7 +11,7 @@ GIT_CLONE_HTTPS='https://github.com/geohci/geo-provenance.git'  # for `git clone
 GIT_BRANCH='master'
 
 # derived paths
-ETC_PATH="/etc/${APP_LBL}"  # app config info, scripts, ML models, etc.
+ETC_PATH="/etc/${APP_LBL}"  # app directory
 SRV_PATH="/srv/${APP_LBL}"  # application resources for serving endpoint
 TMP_PATH="/tmp/${APP_LBL}"  # store temporary files created as part of setting up app (cleared with every update)
 LOG_PATH="/var/log/uwsgi"  # application log data
@@ -56,16 +56,15 @@ chown -R www-data:www-data ${LOG_PATH}
 chown -R www-data:www-data ${LIB_PATH}
 
 echo "Copying configuration files and code..."
-cp ${TMP_PATH}/${REPO_LBL}/api/flask_config.yaml ${ETC_PATH}
-cp ${TMP_PATH}/${REPO_LBL}/api/uwsgi.ini ${ETC_PATH}
 cp ${TMP_PATH}/${REPO_LBL}/wsgi.py ${ETC_PATH}
+cp -R ${TMP_PATH}/${REPO_LBL}/api ${ETC_PATH}
 cp -R ${TMP_PATH}/${REPO_LBL}/urltoregion ${ETC_PATH}
-cp ${ETC_PATH}/model.nginx /etc/nginx/sites-available/model
+cp ${ETC_PATH}/api/model.nginx /etc/nginx/sites-available/model
 if [[ -f "/etc/nginx/sites-enabled/model" ]]; then
     unlink /etc/nginx/sites-enabled/model
 fi
 ln -s /etc/nginx/sites-available/model /etc/nginx/sites-enabled/
-cp ${ETC_PATH}/model.service /etc/systemd/system/
+cp ${ETC_PATH}/api/model.service /etc/systemd/system/
 
 echo "Enabling and starting services..."
 systemctl enable model.service  # uwsgi starts when server starts up

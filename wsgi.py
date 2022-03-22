@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import traceback
 
 from flask import Flask, request, jsonify
@@ -10,10 +11,12 @@ import tldextract
 from urllib.parse import urlparse
 import yaml
 
+__dir__ = os.path.dirname(__file__)
+sys.path.append(__dir__)
+
 from urltoregion import LogisticInferrer, url2registereddomain
 
 app = Flask(__name__)
-__dir__ = os.path.dirname(__file__)
 
 INFERRER = LogisticInferrer()
 

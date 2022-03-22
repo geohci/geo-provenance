@@ -29,17 +29,16 @@ pip install wheel
 pip install -r ${TMP_PATH}/${REPO_LBL}/requirements.txt
 
 # update config / code -- if only changing Python and not nginx/uwsgi code, then much of this can be commented out
-echo "Copying configuration files..."
-cp ${TMP_PATH}/${REPO_LBL}/api/flask_config.yaml ${ETC_PATH}
-cp ${TMP_PATH}/${REPO_LBL}/api/uwsgi.ini ${ETC_PATH}
+echo "Copying configuration files and code..."
 cp ${TMP_PATH}/${REPO_LBL}/wsgi.py ${ETC_PATH}
+cp -R ${TMP_PATH}/${REPO_LBL}/api ${ETC_PATH}
 cp -R ${TMP_PATH}/${REPO_LBL}/urltoregion ${ETC_PATH}
-cp ${ETC_PATH}/model.nginx /etc/nginx/sites-available/model
+cp ${ETC_PATH}/api/model.nginx /etc/nginx/sites-available/model
 if [[ -f "/etc/nginx/sites-enabled/model" ]]; then
     unlink /etc/nginx/sites-enabled/model
 fi
 ln -s /etc/nginx/sites-available/model /etc/nginx/sites-enabled/
-cp ${ETC_PATH}/model.service /etc/systemd/system/
+cp ${ETC_PATH}/api/model.service /etc/systemd/system/
 
 echo "Enabling and starting services..."
 systemctl enable model.service  # uwsgi starts when server starts up
