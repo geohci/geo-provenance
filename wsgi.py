@@ -50,7 +50,7 @@ def geoprovenance():
                     region_summary['no_country'] = region_summary.get('no_country', 0) + 1
             else:
                 country = None
-                region_summary['no_url'] = region_summary.get('no_url', 0) + 1
+                region_summary['no_website'] = region_summary.get('no_website', 0) + 1
             results.append({'template':ref, 'extracted_url':url, 'country':country})
             if domain:
                 domains.add(domain)
@@ -58,7 +58,7 @@ def geoprovenance():
                 no_domain += 1
         metadata['num_cite_templates'] = len(results)
         metadata['num_unique_domains'] = len(domains)
-        metadata['num_missing_urls'] = no_domain
+        metadata['num_missing_websites'] = no_domain
         return jsonify({'article':f'https://{lang}.wikipedia.org/wiki/{page_title}',
                         'sources':results,
                         'metadata':metadata,
