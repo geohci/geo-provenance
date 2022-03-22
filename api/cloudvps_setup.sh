@@ -36,6 +36,7 @@ mkdir -p ${SRV_PATH}/sock
 mkdir -p ${ETC_PATH}
 mkdir -p ${LOG_PATH}
 mkdir -p ${LIB_PATH}
+mkdir -p var/www/.cache  # used by tldextract for cache
 
 echo "Setting up virtualenv..."
 python3 -m venv ${LIB_PATH}/p3env

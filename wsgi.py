@@ -36,7 +36,6 @@ def geoprovenance():
         return jsonify({"error": error})
     else:
         wikitext = get_wikitext(lang, page_title)
-        print(f'{wikitext[:100]}...')
         results = []
         metadata = {'num_ref_tags':count_ref_tags(wikitext)}
         region_summary = {}
@@ -135,7 +134,10 @@ def get_references(wikitext):
                             url = path[start_of_archived_url:]
             except Exception:
                 continue
-            yield (str(template), url, url2registereddomain(url))
+            domain = ''
+            if url:
+                domain = url2registereddomain(url)
+            yield (str(template), url, domain)
         return cite_templates
     except Exception:
         traceback.print_exc()
