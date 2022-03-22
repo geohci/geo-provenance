@@ -25,6 +25,7 @@ apt-get install -y python3-pip  # install dependencies
 apt-get install -y python3-wheel  # make sure dependencies install correctly even when missing wheels
 apt-get install -y python3-venv  # for building virtualenv
 apt-get install -y python3-dev  # necessary for fasttext
+apt-get install -y rsync
 apt-get install -y uwsgi
 apt-get install -y uwsgi-plugin-python3
 # potentially add: apt-get install -y git python3 libpython3.7 python3-setuptools

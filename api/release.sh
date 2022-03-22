@@ -32,7 +32,7 @@ pip install -r ${TMP_PATH}/${REPO_LBL}/requirements.txt
 echo "Copying configuration files and code..."
 cp ${TMP_PATH}/${REPO_LBL}/wsgi.py ${ETC_PATH}
 cp -R ${TMP_PATH}/${REPO_LBL}/api ${ETC_PATH}
-cp -R ${TMP_PATH}/${REPO_LBL}/urltoregion ${ETC_PATH}
+rsync -av --progress ${TMP_PATH}/${REPO_LBL}/urltoregion ${ETC_PATH} --exclude data  # don't overwrite whois cache
 cp ${ETC_PATH}/api/model.nginx /etc/nginx/sites-available/model
 if [[ -f "/etc/nginx/sites-enabled/model" ]]; then
     unlink /etc/nginx/sites-enabled/model
