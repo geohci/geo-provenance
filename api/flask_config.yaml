@@ -1,0 +1,4 @@
+# User-agent used for querying Wikidata API
+CUSTOM_UA: "geo-provenance (cloud vps) -- isaac@wikimedia.org"
+
+DEBUG: False

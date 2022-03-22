@@ -1,0 +1,9 @@
+Flask
+Flask-Cors
+mwapi
+mwparserfromhell
+PyYAML
+shapely
+tldextract
+uWSGI
+git+https://github.com/richardpenman/whois.git

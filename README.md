@@ -19,22 +19,21 @@ Summary:
 * I updated tests etc. in the various Python files to match the above changes (which can be run via `pytest -vv <filename>`)
 * I restructured the data folder to account for updated data -- it can be populated based on the original via `gputils.py` and running the new wikidata.py script
 * Updated geonames.txt with current version as of 18 March 2022: https://download.geonames.org/export/dump/countryInfo.txt
-
-TODOs:
-* Train new model and update model coefficients
+* Updated model coefficients and priors
 
 ### Installing necessary Python modules:
 
 ```bash
 pip install shapely
 pip install tldextract
+pip install git+https://github.com/richardpenman/whois.git
 ```
 
 If you want to run the evaluator, which rebuilds the logistic regression (not necessary to use the pre-built model), you'll also need to install `sklearn`.
 
 ### Running the command-line program.
 
-The `py` directory contains the `run_inferrer.py` program, which reads URLs from standard input and writes information about them to standard output. For example, if you ran the following from the shell from within the `py` directory:
+The `urltoregion` directory contains the `run_inferrer.py` program, which reads URLs from standard input and writes information about them to standard output. For example, if you ran the following from the shell from within the `py` directory:
 
 ```bash
 $ echo 'http://www.timeout.com/dublin/' | python ./run_inferrer.py
@@ -50,10 +49,10 @@ run_inferrer.py outputs the following four tab-separated fields:
 
 1. The URL itself.
 2. The most probable country.
-3. The estimated probability the most probable country is correct (in this case, about 83%).
+3. The estimated probability the most probable country is correct (in this case, about 84%).
 4. The top 10 candidate countries, along with their associated probabilities, in JSON format.
 
-If you run the program from somewhere outside of the `py` directory, you can specify the data directory, from the command line:
+If you run the program from somewhere outside of the `urltoregion` directory, you can specify the data directory, from the command line:
 
 ```bash
 $ python run_inferrer.py path/to/data/dir
@@ -65,7 +64,7 @@ $ python run_inferrer.py path/to/data/dir
 import gputils
 import gpinfer
 
-# necessary iff not run from the "py" directory
+# necessary iff not run from the "urltoregion" directory
 gputils.set_data_dir('/path/to/data')
 
 inferrer = gpinfer.LogisticInferrer()
@@ -77,13 +76,8 @@ inferrer = gpinfer.LogisticInferrer()
 
 ### Incorporating larger pre-built caches for speed
 
-A larger feature cache is available at https://www.dropbox.com/s/hq5ogzrd2jobwwh/geo-provenance-features.zip?dl=0. To use this feature cache, download and extract the zip file. You'll then need to point the module at the feature directory by either specifying the appropriate argument to the run_inferrer.py program, or by calling `gp_utils.set_feature_dir` with the appropriate absolute pathname.
-
-This cache contains information about all 7.5M URLs analyzed in our CHI paper.
-
-### The GeoProv198 Dataset
-
-The logistic regression classification model used in this package is trained using a gold standard dataset that maps urls to countries. This dataset is available in the [data](https://github.com/shilad/geo-provenance/blob/master/data/geoprov198.tsv) directory and its collection methodology is described in the citation above.
+A larger feature cache is available at https://www.dropbox.com/s/hq5ogzrd2jobwwh/geo-provenance-features.zip?dl=0. To use this feature cache, download and extract the zip file. You'll then need to update `gputils.get_data_path` to point to the right place for `model`.
+This cache contains information about all 7.5M URLs analyzed in the CHI paper.
 
 ### Questions or suggestions?
 
@@ -91,4 +85,4 @@ Open an issue on this repo, send a pull request, or email Isaac at isaac@wikimed
 
 ### Credits
 
-* See: https://github.com/shilad/geo-provenance
+* See original repo: https://github.com/shilad/geo-provenance

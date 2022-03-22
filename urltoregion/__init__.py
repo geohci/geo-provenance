@@ -1,0 +1,2 @@
+from urltoregion.gpinfer import LogisticInferrer
+from urltoregion.gputils import url2registereddomain

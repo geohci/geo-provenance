@@ -1,0 +1,14 @@
+# remove IP and user-agent.
+log_format private '[$time_local] "$request" $status $body_bytes_sent "$http_referer"';
+
+server {
+    listen 80;
+    server_name geo-provenance.wmcloud.org;
+    # remove this line or change 'private' to 'combined' to restore user-agent + IP information
+    access_log /var/log/nginx/access.log private;
+
+    location / {
+        include uwsgi_params;
+        uwsgi_pass unix:/srv/api-endpoint/sock/model.sock;
+    }
+}
