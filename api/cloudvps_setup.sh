@@ -34,7 +34,6 @@ rm -rf ${TMP_PATH}
 mkdir -p ${TMP_PATH}
 mkdir -p ${SRV_PATH}/sock
 mkdir -p ${ETC_PATH}
-mkdir -p ${ETC_PATH}/resources
 mkdir -p ${LOG_PATH}
 mkdir -p ${LIB_PATH}
 
@@ -49,12 +48,6 @@ echo "Installing repositories..."
 pip install wheel
 pip install -r ${TMP_PATH}/${REPO_LBL}/requirements.txt
 
-echo "Setting up ownership..."  # makes www-data (how nginx is run) owner + group for all data etc.
-chown -R www-data:www-data ${ETC_PATH}
-chown -R www-data:www-data ${SRV_PATH}
-chown -R www-data:www-data ${LOG_PATH}
-chown -R www-data:www-data ${LIB_PATH}
-
 echo "Copying configuration files and code..."
 cp ${TMP_PATH}/${REPO_LBL}/wsgi.py ${ETC_PATH}
 cp -R ${TMP_PATH}/${REPO_LBL}/api ${ETC_PATH}
@@ -65,6 +58,12 @@ if [[ -f "/etc/nginx/sites-enabled/model" ]]; then
 fi
 ln -s /etc/nginx/sites-available/model /etc/nginx/sites-enabled/
 cp ${ETC_PATH}/api/model.service /etc/systemd/system/
+
+echo "Setting up ownership..."  # makes www-data (how nginx is run) owner + group for all data etc.
+chown -R www-data:www-data ${ETC_PATH}
+chown -R www-data:www-data ${SRV_PATH}
+chown -R www-data:www-data ${LOG_PATH}
+chown -R www-data:www-data ${LIB_PATH}
 
 echo "Enabling and starting services..."
 systemctl enable model.service  # uwsgi starts when server starts up
