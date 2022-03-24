@@ -21,6 +21,8 @@ Summary:
 * Updated geonames.txt with current version as of 18 March 2022: https://download.geonames.org/export/dump/countryInfo.txt
 * Updated model coefficients and priors
 
+## Running the code
+
 ### Installing necessary Python modules:
 
 ```bash
@@ -74,15 +76,22 @@ inferrer = gpinfer.LogisticInferrer()
 (conf, dist) = inferrer.infer('http://www.timeout.com/dublin/')
 ```
 
+## Data
 ### Incorporating larger pre-built caches for speed
 
 A larger feature cache is available at https://www.dropbox.com/s/hq5ogzrd2jobwwh/geo-provenance-features.zip?dl=0. To use this feature cache, download and extract the zip file. You'll then need to update `gputils.get_data_path` to point to the right place for `model`.
 This cache contains information about all 7.5M URLs analyzed in the CHI paper.
 
-### Questions or suggestions?
+## Issues
+If you have questions or suggestions, feel free to open an issue on this repo, send a pull request, or email Isaac at isaac@wikimedia.org.
 
-Open an issue on this repo, send a pull request, or email Isaac at isaac@wikimedia.org.
+### Future Work
+This is a fork so no issue tracker but a few known issues that I would like to address:
+* How to gather more references from the text without relying on the various cite templates (which only really apply to English)? Could I perhaps use the HTML of articles? This would likely improve the API though prevent historical analyses.
+* How to handle references without URLs? Can we build a mapping of publishers -> countries based on Wikidata?
+* How to handle Google Books? Right now, I ignore these links and having an approach for publishers might help further.
+* How to better preserve the growing cache of whois results / is there a point at which the cache is invalid because the domain may be owned by someone else now?
 
-### Credits
+## Credits
 
 * See original repo: https://github.com/shilad/geo-provenance
