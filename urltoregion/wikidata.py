@@ -15,9 +15,9 @@ import requests
 
 from shapely.geometry import shape, Point
 
-import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-print(sys.path)
+# Sometimes needed to run scripts locally... Not sure why...
+#import sys
+#sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from urltoregion.gputils import *
 
@@ -194,6 +194,7 @@ def rebuild():
 def get_publishers():
     """Build cache of Publishers -> Countries from Wikidata."""
     from urltoregion.gpinfer import LogisticInferrer as LR
+    import time
 
     region_shapes = get_region_data(region_qids_tsv=get_data_path('base_regions_qids.tsv', dirtype='country'),
                                     region_geoms_geojson=get_data_path('ne_10m_admin_0_map_units.geojson', dirtype='country'),
@@ -287,6 +288,7 @@ def get_publishers():
                     if dist[top_cand] > 0.5:
                         country = top_cand
                         print(f'inferred {country} from {url} ({domain})')
+                    time.sleep(0.5)
 
                 if country:
                     tsvwriter.writerow([pub, country])

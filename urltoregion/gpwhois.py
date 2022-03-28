@@ -125,16 +125,16 @@ class WhoisProvider:
         if freetext:
             self.cache[domain] = freetext
             pairs = [f'{cc}|{n}' for (cc, n) in freetext.items()]
-            self.add_cache_line(domain + '\t' + ','.join(pairs))
+            self.add_cache_line(domain + '\t' + ';'.join(pairs))
             return
 
         warn(f'add_to_cache failed for {domain}. Raw record: {raw}\n')
-        if first_attempt:
-            warn(f'retrying add_to_cache for {domain}.')
-            self.add_to_cache(domain, first_attempt=False)
-        if not first_attempt:
-            self.cache[domain] = {}
-            self.add_cache_line(domain + '\t')
+        # NOTE: can check first_attempt and if True do: self.add_to_cache(domain, first_attempt=False)
+        # and otherwise proceed with updating the cache.
+        # This would re-run the WHOIS lookup with a different method and sometimes helps.
+        # The second method is also less reliable and can hang-up
+        self.cache[domain] = {}
+        self.add_cache_line(domain + '\t')
 
     def add_cache_line(self, line):
         with gp_open(self.cache_path, 'a') as f:
