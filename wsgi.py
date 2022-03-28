@@ -39,31 +39,38 @@ def geoprovenance():
         results = []
         metadata = {'num_ref_tags':count_ref_tags(wikitext)}
         region_summary = {}
-        domains = set()
+        domains = {}
         no_domain = 0
-        for ref, url, domain in get_references(wikitext):
-            if url:
-                country = url_to_region(url)
-                if country:
-                    region_summary[country] = region_summary.get(country, 0) + 1
-                else:
-                    region_summary['no_country'] = region_summary.get('no_country', 0) + 1
-            else:
-                country = None
-                region_summary['no_website'] = region_summary.get('no_website', 0) + 1
-            results.append({'template':ref, 'extracted_url':url, 'country':country})
-            if domain:
-                domains.add(domain)
-            else:
-                no_domain += 1
-        metadata['num_cite_templates'] = len(results)
-        metadata['num_unique_domains'] = len(domains)
-        metadata['num_missing_websites'] = no_domain
-        return jsonify({'article':f'https://{lang}.wikipedia.org/wiki/{page_title}',
-                        'sources':results,
-                        'metadata':metadata,
-                        'region_summary':[(c, region_summary[c]) for c in sorted(
-                            region_summary, key=region_summary.get, reverse=True)]})
+        try:
+            for ref, url, domain in get_references(wikitext):
+                try:
+                    if url:
+                        country = domains.get(domain, url_to_region(url))
+                        if country:
+                            region_summary[country] = region_summary.get(country, 0) + 1
+                        else:
+                            region_summary['no_country'] = region_summary.get('no_country', 0) + 1
+                    else:
+                        country = None
+                        region_summary['no_website'] = region_summary.get('no_website', 0) + 1
+                    results.append({'template':ref, 'extracted_url':url, 'country':country})
+                    if domain:
+                        domains[domain] = country
+                    else:
+                        no_domain += 1
+                except Exception:
+                    continue
+        except:  # if uwsgi kills process, still try to return empty result
+            pass
+        finally:
+            metadata['num_cite_templates'] = len(results)
+            metadata['num_unique_domains'] = len(domains)
+            metadata['num_missing_websites'] = no_domain
+            return jsonify({'article':f'https://{lang}.wikipedia.org/wiki/{page_title}',
+                            'sources':results,
+                            'metadata':metadata,
+                            'region_summary':[(c, region_summary[c]) for c in sorted(
+                                region_summary, key=region_summary.get, reverse=True)]})
 
 def get_wikitext(lang, title):
     """Gather set of up to `limit` outlinks for an article."""
