@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import time
 import traceback
 
 from flask import Flask, request, jsonify
@@ -41,10 +42,12 @@ def geoprovenance():
         region_summary = {}
         domains = {}
         no_domain = 0
+        start = time.time()
+        do_process = True
         try:
             for ref, url, domain in get_references(wikitext):
                 try:
-                    if url:
+                    if url and do_process:
                         country = domains.get(domain, url_to_region(url))
                         if country:
                             region_summary[country] = region_summary.get(country, 0) + 1
@@ -60,7 +63,9 @@ def geoprovenance():
                         no_domain += 1
                 except Exception:
                     continue
-        except:  # if uwsgi kills process, still try to return empty result
+                if time.time() - start > 50:
+                    do_process = False  # taking too long, stop processing domains and skip to the end
+        except:  # if processing fails, still return what you have
             pass
         finally:
             metadata['num_cite_templates'] = len(results)

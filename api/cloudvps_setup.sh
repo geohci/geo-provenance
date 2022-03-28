@@ -66,6 +66,7 @@ chown -R www-data:www-data ${ETC_PATH}
 chown -R www-data:www-data ${SRV_PATH}
 chown -R www-data:www-data ${LOG_PATH}
 chown -R www-data:www-data ${LIB_PATH}
+chown -R www-data:www-data /var/www/.cache
 
 echo "Enabling and starting services..."
 systemctl enable model.service  # uwsgi starts when server starts up
