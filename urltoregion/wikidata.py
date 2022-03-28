@@ -15,9 +15,14 @@ import requests
 
 from shapely.geometry import shape, Point
 
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+print(sys.path)
+
 from urltoregion.gputils import *
 
 WIKIDATA_HEADER = ['domain', 'lat', 'lon', 'country']
+PUBLISHER_HEADER = ['publisher', 'country']
 
 class WikidataProvider:
     """
@@ -186,6 +191,165 @@ def rebuild():
            f"{invalid_coords} had invalid coordinates. "
            f"{invalid_sparql} had invalid sparql."))
 
+def get_publishers():
+    """Build cache of Publishers -> Countries from Wikidata."""
+    from urltoregion.gpinfer import LogisticInferrer as LR
+
+    region_shapes = get_region_data(region_qids_tsv=get_data_path('base_regions_qids.tsv', dirtype='country'),
+                                    region_geoms_geojson=get_data_path('ne_10m_admin_0_map_units.geojson', dirtype='country'),
+                                    aggregation_tsv=get_data_path('country_aggregation.tsv', dirtype='country'))
+
+    qid_to_country = get_qid_to_region(region_qids_tsv=get_data_path('base_regions_qids.tsv', dirtype='country'),
+                                       aggregation_tsv=get_data_path('country_aggregation.tsv', dirtype='country'))
+
+    inferrer = LR()
+
+    #
+    website_query = """
+    # All items with an official website and either coordinates or a headquarters location
+    SELECT
+    ?itemLabel ?coords ?country ?websiteurl
+    WHERE
+    {
+      # publishers
+      ?item wdt:P31/wdt:P279* wd:Q2085381 .  # Instance-of/subclass of Publisher
+      # and country or coordinate location or headquarters
+      OPTIONAL { ?item wdt:P856 ?websiteurl . }
+      OPTIONAL { ?item wdt:P17 ?country . }
+      OPTIONAL { ?item wdt:P625 ?coords . }
+      OPTIONAL { ?item wdt:P159 ?hq . 
+                ?hq wdt:P625 ?coords .}
+      FILTER(BOUND(?coords) || BOUND(?country) || BOUND(?websiteurl)).
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }
+    }
+    """
+
+    print("Querying WDQS...")
+    r = requests.get("https://query.wikidata.org/sparql",
+                     params={'format': 'json', 'query': website_query},
+                     headers={'User-Agent': 'isaac@wikimedia.org; geoprovenance'})
+    results = r.json()
+    all_data = results['results']['bindings']
+    print(f"{len(all_data)} publishers retrieved.")
+    seen = set()
+    written = 0
+    not_found = 0
+    no_pub = 0
+    invalid_coords = 0
+    invalid_country = 0
+    invalid_sparql = 0
+    already_seen = 0
+
+    print("Processing results...")
+    with open(get_data_path('wikidata_publisher_countries_INT.tsv', dirtype='model'), 'w') as fout:
+        tsvwriter = csv.writer(fout, delimiter='\t')
+        tsvwriter.writerow(PUBLISHER_HEADER)
+        for i, publisher in enumerate(all_data, start=1):
+            if i % 5000 == 0:
+                print((f"{i} publishers processed. "
+                       f"{already_seen} skipped as duplicates. "
+                       f"{written} written. "
+                       f"{no_pub} missing a publisher. "
+                       f"{not_found} had coordinates but no country found. "
+                       f"{invalid_coords} had invalid coordinates. "
+                       f"{invalid_sparql} had invalid sparql."))
+            try:
+                pub = publisher['itemLabel']['value']
+                if pub in seen:
+                    already_seen += 1  # still retain -- unfortunately names are not unique
+                elif not pub:
+                    no_pub += 1
+                    continue
+                seen.add(pub)
+
+                country = ''
+                if 'country' in publisher:
+                    try:
+                        country_qid = publisher['country']['value'].replace('http://www.wikidata.org/entity/', '')
+                        country = qid_to_country[country_qid]
+                    except Exception:
+                        invalid_country += 1
+
+                if not country and 'coords' in publisher:
+                    try:
+                        coords = publisher['coords']['value']
+                        lon, lat = coords.replace("Point", "")[1:-1].split()  # ex: Point(14.4690742 50.0674744)
+                        country = coord_to_country(region_shapes, float(lon), float(lat))
+                    except Exception:
+                        invalid_coords += 1
+                        continue
+
+                if 'websiteurl' in publisher and not country:
+                    url = publisher['websiteurl']['value']
+                    domain = url2registereddomain(url)
+                    conf, dist = inferrer.infer(url)
+                    top_cand = max(dist, key=dist.get)
+                    if dist[top_cand] > 0.5:
+                        country = top_cand
+                        print(f'inferred {country} from {url} ({domain})')
+
+                if country:
+                    tsvwriter.writerow([pub, country])
+                    written += 1
+                else:
+                    not_found += 1
+            except Exception:
+                import traceback
+                traceback.print_exc()
+                invalid_sparql += 1
+
+    print((f"Complete! {i} publishers processed. "
+           f"{already_seen} skipped as duplicates. "
+           f"{written} written. "
+           f"{no_pub} missing a publisher. "
+           f"{not_found} had coordinates but no country found. "
+           f"{invalid_coords} had invalid coordinates. "
+           f"{invalid_sparql} had invalid sparql."))
+
+    print("Cleaning up results")
+    to_remove = set()
+    results = {}
+    with open(get_data_path('wikidata_publisher_countries_INT.tsv', dirtype='model'), 'r') as fout:
+        tsvreader = csv.reader(fout, delimiter='\t')
+        assert next(tsvreader) == PUBLISHER_HEADER
+        for line in tsvreader:
+            publisher = line[0]
+            country = line[1]
+            if publisher in results and results[publisher] != country:
+                to_remove.add(publisher)
+            else:
+                results[publisher] = country
+
+    with open(get_data_path('wikidata_publisher_countries.tsv', dirtype='model'), 'w') as fout:
+        tsvwriter = csv.writer(fout, delimiter='\t')
+        tsvwriter.writerow(PUBLISHER_HEADER)
+        for publisher, country in results.items():
+            if publisher not in to_remove:
+                tsvwriter.writerow([publisher, country])
+
+def get_qid_to_region(region_qids_tsv, aggregation_tsv):
+    # load in base regions
+    qid_to_region = {}
+    with open(region_qids_tsv, 'r') as fin:
+        tsvreader = csv.reader(fin, delimiter='\t')
+        assert next(tsvreader) == ['Region', 'QID']
+        for line in tsvreader:
+            region = line[0]
+            qid = line[1]
+            qid_to_region[qid] = region
+    warn(f"Loaded {len(qid_to_region)} base regions.")
+    # load in additional regions that should be mapped to a more canonical region name
+    aggregation = get_aggregation_logic(aggregation_tsv)
+    for qid_from in aggregation:
+        qid_to = aggregation[qid_from]
+        if qid_to in qid_to_region:
+            qid_to_region[qid_from] = qid_to_region[qid_to]
+        else:
+            warn(f"-- Skipping aggregation for {qid_from} to {qid_to}")
+    warn(f"Now {len(qid_to_region)} region pairs after adding aggregations.")
+
+    return qid_to_region
+
 def coord_to_country(region_shapes, lon, lat):
     """Determine which region contains a lat-lon coordinate.
 
@@ -224,24 +388,7 @@ def get_aggregation_logic(aggregates_tsv):
 
 def get_region_data(region_qids_tsv, region_geoms_geojson, aggregation_tsv):
     # load in base regions
-    qid_to_region = {}
-    with open(region_qids_tsv, 'r') as fin:
-        tsvreader = csv.reader(fin, delimiter='\t')
-        assert next(tsvreader) == ['Region', 'QID']
-        for line in tsvreader:
-            region = line[0]
-            qid = line[1]
-            qid_to_region[qid] = region
-    warn(f"Loaded {len(qid_to_region)} base regions.")
-    # load in additional regions that should be mapped to a more canonical region name
-    aggregation = get_aggregation_logic(aggregation_tsv)
-    for qid_from in aggregation:
-        qid_to = aggregation[qid_from]
-        if qid_to in qid_to_region:
-            qid_to_region[qid_from] = qid_to_region[qid_to]
-        else:
-            warn(f"-- Skipping aggregation for {qid_from} to {qid_to}")
-    warn(f"Now {len(qid_to_region)} region pairs after adding aggregations.")
+    qid_to_region = get_qid_to_region(region_qids_tsv, aggregation_tsv)
 
     # load in geometries for the regions identified via Wikidata
     with open(region_geoms_geojson, 'r') as fin:
@@ -259,4 +406,5 @@ def get_region_data(region_qids_tsv, region_geoms_geojson, aggregation_tsv):
     return region_shapes
 
 if __name__ == '__main__':
-    rebuild()
+    #rebuild()
+    get_publishers()
