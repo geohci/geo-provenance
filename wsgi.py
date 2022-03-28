@@ -63,14 +63,17 @@ def geoprovenance():
                         no_domain += 1
                 except Exception:
                     continue
-                if time.time() - start > 50:
+                if time.time() - start > 40:
                     do_process = False  # taking too long, stop processing domains and skip to the end
         except:  # if processing fails, still return what you have
+            traceback.print_exc()
             pass
         finally:
             metadata['num_cite_templates'] = len(results)
             metadata['num_unique_domains'] = len(domains)
             metadata['num_missing_websites'] = no_domain
+            if not do_process:
+                metadata['process_timed_out'] = True
             return jsonify({'article':f'https://{lang}.wikipedia.org/wiki/{page_title}',
                             'sources':results,
                             'metadata':metadata,
