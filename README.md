@@ -14,6 +14,7 @@ Summary:
 * I switched to full country names as the underlying country "vocab" to align with other analyses and include regions without ISO-2 codes
 * I switched in local point-to-country inference for Nominatim to reduce external dependency / save high volume of API calls
 * I updated the pythonwhois library (mainly fixing regexes by explicitly making `r"..." strings`) per https://github.com/joepie91/python-whois/issues
+* I also fixed a catastrophic backtracking in the `parse_nic_contact` function by simplifying the regexes (given that we only want country information) -- this was causing extremely long processing for French websites
 * I added manual aliases for countries that aren't in original ISO2 code vocab and USA for United States
 * I removed `cs` for Czech Republic as a manual alias because it matches against `.cs` (shows up in emails as with computer science departments)
 * I updated tests etc. in the various Python files to match the above changes (which can be run via `pytest -vv <filename>`)
