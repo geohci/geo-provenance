@@ -9,6 +9,10 @@ import sys
 import time
 import traceback
 
+# Sometimes needed to run scripts locally... Not sure why...
+# import os
+# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from urltoregion.gputils import *
 from urltoregion.gpinfer import LogisticInferrer
 

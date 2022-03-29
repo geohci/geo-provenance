@@ -50,7 +50,7 @@ class LogisticInferrer:
                 TldFeature()
             ]
             self.intercept = -7.23
-            self.coefficients = [3.30, 6.56, 2.53, 3.74, 4.05, 7.00]
+            self.coefficients = [3.30, 6.56, 2.53, 7.00, 4.05, 7.00]
         else:
             if not intercept or not coefficients:
                 raise GPException("if features are specified, intercept and coefficients must be too.")
