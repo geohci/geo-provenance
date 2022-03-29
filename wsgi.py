@@ -20,6 +20,7 @@ from urltoregion import LogisticInferrer, url2registereddomain
 app = Flask(__name__)
 
 INFERRER = LogisticInferrer()
+PUBLISHERS = {}
 
 WIKIPEDIA_LANGUAGE_CODES = ['aa', 'ab', 'ace', 'ady', 'af', 'ak', 'als', 'am', 'an', 'ang', 'ar', 'arc', 'ary', 'arz', 'as', 'ast', 'atj', 'av', 'avk', 'awa', 'ay', 'az', 'azb', 'ba', 'ban', 'bar', 'bat-smg', 'bcl', 'be', 'be-x-old', 'bg', 'bh', 'bi', 'bjn', 'bm', 'bn', 'bo', 'bpy', 'br', 'bs', 'bug', 'bxr', 'ca', 'cbk-zam', 'cdo', 'ce', 'ceb', 'ch', 'cho', 'chr', 'chy', 'ckb', 'co', 'cr', 'crh', 'cs', 'csb', 'cu', 'cv', 'cy', 'da', 'de', 'din', 'diq', 'dsb', 'dty', 'dv', 'dz', 'ee', 'el', 'eml', 'en', 'eo', 'es', 'et', 'eu', 'ext', 'fa', 'ff', 'fi', 'fiu-vro', 'fj', 'fo', 'fr', 'frp', 'frr', 'fur', 'fy', 'ga', 'gag', 'gan', 'gcr', 'gd', 'gl', 'glk', 'gn', 'gom', 'gor', 'got', 'gu', 'gv', 'ha', 'hak', 'haw', 'he', 'hi', 'hif', 'ho', 'hr', 'hsb', 'ht', 'hu', 'hy', 'hyw', 'hz', 'ia', 'id', 'ie', 'ig', 'ii', 'ik', 'ilo', 'inh', 'io', 'is', 'it', 'iu', 'ja', 'jam', 'jbo', 'jv', 'ka', 'kaa', 'kab', 'kbd', 'kbp', 'kg', 'ki', 'kj', 'kk', 'kl', 'km', 'kn', 'ko', 'koi', 'kr', 'krc', 'ks', 'ksh', 'ku', 'kv', 'kw', 'ky', 'la', 'lad', 'lb', 'lbe', 'lez', 'lfn', 'lg', 'li', 'lij', 'lld', 'lmo', 'ln', 'lo', 'lrc', 'lt', 'ltg', 'lv', 'mai', 'map-bms', 'mdf', 'mg', 'mh', 'mhr', 'mi', 'min', 'mk', 'ml', 'mn', 'mnw', 'mr', 'mrj', 'ms', 'mt', 'mus', 'mwl', 'my', 'myv', 'mzn', 'na', 'nah', 'nap', 'nds', 'nds-nl', 'ne', 'new', 'ng', 'nl', 'nn', 'no', 'nov', 'nqo', 'nrm', 'nso', 'nv', 'ny', 'oc', 'olo', 'om', 'or', 'os', 'pa', 'pag', 'pam', 'pap', 'pcd', 'pdc', 'pfl', 'pi', 'pih', 'pl', 'pms', 'pnb', 'pnt', 'ps', 'pt', 'qu', 'rm', 'rmy', 'rn', 'ro', 'roa-rup', 'roa-tara', 'ru', 'rue', 'rw', 'sa', 'sah', 'sat', 'sc', 'scn', 'sco', 'sd', 'se', 'sg', 'sh', 'shn', 'si', 'simple', 'sk', 'sl', 'sm', 'smn', 'sn', 'so', 'sq', 'sr', 'srn', 'ss', 'st', 'stq', 'su', 'sv', 'sw', 'szl', 'szy', 'ta', 'tcy', 'te', 'tet', 'tg', 'th', 'ti', 'tk', 'tl', 'tn', 'to', 'tpi', 'tr', 'ts', 'tt', 'tum', 'tw', 'ty', 'tyv', 'udm', 'ug', 'uk', 'ur', 'uz', 've', 'vec', 'vep', 'vi', 'vls', 'vo', 'wa', 'war', 'wo', 'wuu', 'xal', 'xh', 'xmf', 'yi', 'yo', 'za', 'zea', 'zh', 'zh-classical', 'zh-min-nan', 'zh-yue', 'zu']
 
@@ -41,37 +42,48 @@ def geoprovenance():
         metadata = {'num_ref_tags':count_ref_tags(wikitext)}
         region_summary = {}
         domains = {}
-        no_domain = 0
+        publishers = set()
         start = time.time()
         do_process = True
         try:
-            for ref, url, domain in get_references(wikitext):
+            for ref, extracted_data in get_references(wikitext):
+                res = {'template':ref}
+                res.update(extracted_data)
+                country = None
+                processed = False
                 try:
-                    if url and do_process:
-                        country = domains.get(domain, url_to_region(url))
-                        if country:
-                            region_summary[country] = region_summary.get(country, 0) + 1
-                        else:
-                            region_summary['no_country'] = region_summary.get('no_country', 0) + 1
-                    else:
-                        country = None
-                        region_summary['no_website'] = region_summary.get('no_website', 0) + 1
-                    results.append({'template':ref, 'extracted_url':url, 'country':country})
-                    if domain:
-                        domains[domain] = country
-                    else:
-                        no_domain += 1
+                    if 'publisher' in extracted_data:
+                        pub = extracted_data['publisher'].lower()
+                        country = PUBLISHERS.get(pub)
+                        processed = True
+                        publishers.add(pub)
+                    if 'url' in extracted_data and country is None:
+                        url = extracted_data['url']
+                        domain = url2registereddomain(url)
+                        if domain and do_process:
+                            country = domains.get(domain, url_to_region(url))
+                            domains[domain] = country
+                            processed = True
                 except Exception:
-                    continue
-                if time.time() - start > 40:
-                    do_process = False  # taking too long, stop processing domains and skip to the end
+                    res['error'] = True
+                finally:
+                    res['country'] = country
+                    results.append(res)
+                    if country:
+                        region_summary[country] = region_summary.get(country, 0) + 1
+                    else:
+                        region_summary['no_country'] = region_summary.get('no_country', 0) + 1
+                    if not processed:
+                        region_summary['n/a'] = region_summary.get('n/a', 0) + 1
+                    if time.time() - start > 40:
+                        do_process = False  # taking too long, stop processing domains and skip to the end
         except:  # if processing fails, still return what you have
             traceback.print_exc()
             pass
         finally:
             metadata['num_cite_templates'] = len(results)
             metadata['num_unique_domains'] = len(domains)
-            metadata['num_missing_websites'] = no_domain
+            metadata['num_unique_publishers'] = len(publishers)
             if not do_process:
                 metadata['process_timed_out'] = True
             return jsonify({'article':f'https://{lang}.wikipedia.org/wiki/{page_title}',
@@ -122,9 +134,16 @@ def get_references(wikitext):
         cite_templates = []
         # with raw regex very hard to detect nested templates -- e.g., citation within an infobox
         for template in mw.parse(wikitext).ifilter_templates(matches=citation_only):
-            url = None
+            extracted_data = {}
             try:
+                url = None
                 wikicode = mw.parse(template)
+                # extract publisher info
+                for param in wikicode.filter_templates()[0].params:
+                    if param.name.strip().lower() == 'publisher':
+                        extracted_data['publisher'] = param.value.strip_code().strip()
+                        break
+                # extract URL
                 potential_urls = [str(u) for u in wikicode.filter_external_links()]
                 if potential_urls:
                     # only one -- use it
@@ -135,7 +154,7 @@ def get_references(wikitext):
                         url = None
                         # look for official url parameter
                         for param in wikicode.filter_templates()[0].params:
-                            if param.name.lower() == 'url':
+                            if param.name.strip().lower() == 'url':
                                 url = str(param.value).strip()
                                 break
                         # multiple but no official URL -- take the first one in template
@@ -151,12 +170,12 @@ def get_references(wikitext):
                     # google books -- common domain that doesn't have much geographic meaning
                     elif tld.subdomain == 'books' and tld.domain == 'google':
                         url = None
+                if url:
+                    extracted_data['url'] = url
             except Exception:
                 continue
-            domain = ''
-            if url:
-                domain = url2registereddomain(url)
-            yield (str(template), url, domain)
+            finally:
+               yield (str(template), extracted_data)
         return cite_templates
     except Exception:
         traceback.print_exc()
@@ -213,7 +232,20 @@ def validate_api_args():
 
     return lang, page_title, error
 
+def load_publishers():
+    expected_header = ['publisher', 'country']
+    with open(os.path.join(__dir__, 'urltoregion/data/fullmodel/wikidata_publisher_countries.tsv'), 'r') as fin:
+        assert next(fin).strip().split('\t') == expected_header
+        for line in fin:
+            line = line.strip().split('\t')
+            publisher = line[0]
+            country = line[1]
+            PUBLISHERS[publisher.strip().lower()] = country
+    print(f"Loaded {len(PUBLISHERS)} publishers.")
+
+
 application = app
+load_publishers()
 
 if __name__ == '__main__':
     application.run()

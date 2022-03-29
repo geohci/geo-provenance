@@ -20,6 +20,7 @@ only used as a last resort.
 import collections
 import os
 import re
+import time
 
 import whois  # pip library, not this file
 
@@ -106,6 +107,7 @@ class WhoisProvider:
         try:
             warn(f'Running whois lookup for {domain}...')
             raw = retrieve_whois_record(domain, first_attempt=first_attempt)
+            time.sleep(0.25)  # don't hammer WHOIS API
         except Exception:
             warn(f'whois lookup for {domain} failed: {sys.exc_info()[1]}')
             self.cache[domain] = {}
