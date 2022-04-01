@@ -6,7 +6,7 @@ import urllib.request
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 
-GENERIC_TLDS = set('ad,as,bz,cc,cd,co,dj,fm,io,la,me,ms,nu,sc,sr,su,tv,tk,ws,int'.split(','))
+GENERIC_TLDS = set('ad,as,bz,cc,cd,co,dj,fm,io,la,me,ms,nu,sc,sr,su,tv,tk,ws'.split(','))
 ISO2_TO_COUNTRY = {}
 
 def get_data_path(filename, dirtype='', original=False):
@@ -60,7 +60,6 @@ def iso2_to_country(iso2):
             for line in fin:
                 iso2, country = line.strip().split('\t')
                 ISO2_TO_COUNTRY[iso2] = country
-        warn(f'iso2_to_country: {ISO2_TO_COUNTRY}')
     return ISO2_TO_COUNTRY.get(iso2, '')
 
 def update_goldfeatures():
