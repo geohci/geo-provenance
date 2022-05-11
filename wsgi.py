@@ -36,7 +36,7 @@ app.config.update(
 cors = CORS(app, resources={r'/api/*': {'origins': '*'}})
 
 @app.route('/api/v1/url-to-country', methods=['GET'])
-def geoprovenance():
+def url_to_country():
     url = request.args.get('url')
     if not url:
         return jsonify({"error": "Missing url parameter -- e.g., https://geo-provenance.wmcloud.org/api/v1/url-to-country?url=https://www.nytimes.com"})
